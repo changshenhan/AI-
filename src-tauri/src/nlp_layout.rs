@@ -131,6 +131,34 @@ fn implicit_meal_blocks_disabled(user_text: &str) -> bool {
         || t.contains("午休也要")
 }
 
+/// 在已排序的空档中，从 `min_start` 起找第一段能放下 `need` 的区间，并扣减该段（可能拆成左右残余）。
+fn place_in_free(
+    free: &mut Vec<(chrono::DateTime<Local>, chrono::DateTime<Local>)>,
+    need: Duration,
+    min_start: chrono::DateTime<Local>,
+) -> Option<(chrono::DateTime<Local>, chrono::DateTime<Local>)> {
+    free.sort_by_key(|x| x.0);
+    let mut i = 0;
+    while i < free.len() {
+        let (gs, ge) = free[i];
+        let s = gs.max(min_start);
+        if s + need <= ge {
+            let end = s + need;
+            free.remove(i);
+            if gs < s {
+                free.push((gs, s));
+            }
+            if end < ge {
+                free.push((end, ge));
+            }
+            free.sort_by_key(|x| x.0);
+            return Some((s, end));
+        }
+        i += 1;
+    }
+    None
+}
+
 fn parse_hhmm(day: &str, hhmm: &str) -> Result<chrono::DateTime<Local>, String> {
     let d = NaiveDate::parse_from_str(day, "%Y-%m-%d").map_err(|e| e.to_string())?;
     let parts: Vec<&str> = hhmm.trim().split(':').collect();
@@ -182,9 +210,13 @@ pub async fn apply_natural_language(
          4) 若目标日晚于今天，可按整日安排，但仍建议避开上述用餐时段除非用户要求。\n\
          5) **tasks 数组**：用户每提到一件**独立工作**（例如「翻译一篇小说」与「开发一个软件」是两件），必须各占 `tasks` 中的一条，**一条 title 只写一件事**；禁止用顿号/逗号/「然后」「还有」把多件事糊成一条 title。\n\
          6) 若用户用「然后」「另外」「还有」连接多步工作，仍须拆成多个 task 对象。\n\
+         7) **时间规划（关键）**：引擎会把任务放进日历的**空闲时段**；你可为每条任务填写可选字段 `suggestedStart`（字符串 \"HH:MM\"，**当地**）。\
+            - 当用户说「上午/下午/晚上/几点/饭前/饭后」或给出大致时刻时，**必须在对应 task 上写出合理的 suggestedStart**（例如上午写作 → \"09:30\"，下午开会 → \"14:00\"）。\
+            - **未写 suggestedStart** 的任务表示「时间灵活」，引擎会按规则在剩余空档里尽早安排。\n\
+            - **tasks 数组顺序**仍表示用户叙述的先后；若与时刻冲突，以 `suggestedStart` 为准（后端会按时刻优先排序再落位）。\n\
          只输出一个 JSON 对象，不要 markdown。Schema: \
          {{ \"busyBlocks\": [ {{ \"start\":\"HH:MM\", \"end\":\"HH:MM\", \"label\": string }} ], \
-         \"tasks\": [ {{ \"title\": string, \"durationMinutes\"?: number }} ] }}。\
+         \"tasks\": [ {{ \"title\": string, \"durationMinutes\"?: number, \"suggestedStart\"?: \"HH:MM\" }} ] }}。\
          busyBlocks 表示用户**不可用于安排**的时间段（将显示为红色）。\
          tasks：每项为**单独计划块**；未给 durationMinutes 时默认 60。",
         now_rfc = now_rfc.as_str(),
@@ -305,11 +337,17 @@ pub async fn apply_natural_language(
         free.push((planning_start, day_end));
     }
 
-    let mut plans_inserted = 0usize;
-    let mut gap_idx = 0;
-    let mut cursor_in_gap: Option<chrono::DateTime<Local>> = None;
+    #[derive(Clone)]
+    struct TaskSpec {
+        title: String,
+        need: Duration,
+        /// 希望不早于该时刻开始（来自 suggestedStart；无则引擎从当日可规划起点起抢最早空档）
+        min_start: chrono::DateTime<Local>,
+        orig_idx: usize,
+    }
 
-    for t in &tasks_arr {
+    let mut specs: Vec<TaskSpec> = Vec::new();
+    for (orig_idx, t) in tasks_arr.iter().enumerate() {
         let title = t
             .get("title")
             .and_then(|x| x.as_str())
@@ -320,40 +358,74 @@ pub async fn apply_natural_language(
             .and_then(|x| x.as_u64())
             .unwrap_or(60) as i64;
         let need = Duration::minutes(dur_m);
+        let sug = t
+            .get("suggestedStart")
+            .or_else(|| t.get("idealStart"))
+            .and_then(|x| x.as_str())
+            .and_then(|s| parse_hhmm(day, s).ok());
+        let min_start = match sug {
+            Some(dt) => {
+                if is_today {
+                    dt.max(planning_start)
+                } else {
+                    dt.max(day_start)
+                }
+            }
+            None => planning_start,
+        };
+        specs.push(TaskSpec {
+            title,
+            need,
+            min_start,
+            orig_idx,
+        });
+    }
 
-        let mut placed = false;
-        while gap_idx < free.len() && !placed {
-            let (gs, ge) = free[gap_idx];
-            let start = cursor_in_gap.unwrap_or(gs);
-            if start >= ge {
-                gap_idx += 1;
-                cursor_in_gap = None;
-                continue;
-            }
-            let end = start + need;
-            if end <= ge {
-                let id = format!("p{}", Uuid::new_v4());
-                let src = format!("trace:{}", trace_id);
-                conn.execute(
-                    "INSERT INTO plan_items (id, day, title, start_at, end_at, status, source_conversation_id)
-                     VALUES (?1, ?2, ?3, ?4, ?5, 'pending', ?6)",
-                    params![
-                        id,
-                        day,
-                        title,
-                        start.to_rfc3339(),
-                        end.to_rfc3339(),
-                        src
-                    ],
-                )
-                .map_err(|e| e.to_string())?;
-                plans_inserted += 1;
-                cursor_in_gap = Some(end);
-                placed = true;
-            } else {
-                gap_idx += 1;
-                cursor_in_gap = None;
-            }
+    // 无 suggested 的「灵活任务」先落位以占满较早空档；带 suggested 的再按时刻先后写入
+    specs.sort_by(|a, b| {
+        let a_has = tasks_arr
+            .get(a.orig_idx)
+            .and_then(|v| v.get("suggestedStart").or_else(|| v.get("idealStart")))
+            .is_some();
+        let b_has = tasks_arr
+            .get(b.orig_idx)
+            .and_then(|v| v.get("suggestedStart").or_else(|| v.get("idealStart")))
+            .is_some();
+        match (a_has, b_has) {
+            (true, true) => a
+                .min_start
+                .cmp(&b.min_start)
+                .then(a.orig_idx.cmp(&b.orig_idx)),
+            (false, false) => a.orig_idx.cmp(&b.orig_idx),
+            (false, true) => std::cmp::Ordering::Less, // 灵活优先，避免先把定点任务占死导致上午浪费
+            (true, false) => std::cmp::Ordering::Greater,
+        }
+    });
+
+    let mut plans_inserted = 0usize;
+    let mut skipped = 0usize;
+
+    for sp in &specs {
+        let min = sp.min_start;
+        if let Some((start, end)) = place_in_free(&mut free, sp.need, min) {
+            let id = format!("p{}", Uuid::new_v4());
+            let src = format!("trace:{}", trace_id);
+            conn.execute(
+                "INSERT INTO plan_items (id, day, title, start_at, end_at, status, source_conversation_id)
+                 VALUES (?1, ?2, ?3, ?4, ?5, 'pending', ?6)",
+                params![
+                    id,
+                    day,
+                    &sp.title,
+                    start.to_rfc3339(),
+                    end.to_rfc3339(),
+                    src
+                ],
+            )
+            .map_err(|e| e.to_string())?;
+            plans_inserted += 1;
+        } else {
+            skipped += 1;
         }
     }
 
@@ -368,8 +440,13 @@ pub async fn apply_natural_language(
         plans_inserted,
         trace_id: trace_id.to_string(),
         note: format!(
-            "已写入 {} 个不可用块、{} 个计划项（规划锚点：{}，时区 {}）。溯源 ID：{}",
-            busy_inserted, plans_inserted, now_line, tz, trace_id
+            "已写入 {} 个不可用块、{} 个计划项（按空档与 suggestedStart 落位；{} 个因空档不足跳过）（规划锚点：{}，时区 {}）。溯源 ID：{}",
+            busy_inserted,
+            plans_inserted,
+            skipped,
+            now_line,
+            tz,
+            trace_id
         ),
     })
 }

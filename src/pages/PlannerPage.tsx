@@ -295,11 +295,15 @@ export function PlannerPage({ settings }: { settings: LlmSettingsPayload }) {
             onChange={(e) => setDay(e.target.value)}
           />
           <textarea
-            className="aura-input mb-3 min-h-[120px] w-full resize-y"
-            placeholder="描述不可用时间与待办，例如：上午 9–12 会议；下午写报告…"
+            className="aura-input mb-2 min-h-[120px] w-full resize-y"
+            placeholder="描述不可用时间与待办。说明「上午/下午/几点」做哪件事，模型会为任务填 suggestedStart，引擎按空档与时刻落入日历。"
             value={nl}
             onChange={(e) => setNl(e.target.value)}
           />
+          <p className="mb-3 text-[10px] leading-snug text-[var(--aura-muted)]">
+            引擎会：先扣红块与用餐占位 → 在剩余时间里排绿块；无时刻的任务优先占早段，定点任务按
+            suggestedStart 对齐。
+          </p>
           <button
             type="button"
             disabled={nlBusy}
