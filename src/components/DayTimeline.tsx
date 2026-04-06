@@ -161,73 +161,85 @@ export const DayTimeline = memo(function DayTimeline({
         ))}
       </div>
 
-      {/* 右侧：网格线 + 块 + 此刻 */}
-      <div className="relative min-h-0 min-w-0 flex-1">
-        {HOURS.map((h) => (
-          <div
-            key={`grid-${h}`}
-            className="pointer-events-none absolute left-0 right-0 border-t border-[var(--aura-border)]"
-            style={{ top: `${(h / 24) * 100}%` }}
-          />
-        ))}
-
-        {nowPct != null && (
-          <div
-            className="pointer-events-none absolute left-0 right-0 z-10 border-t-2 border-[var(--aura-accent)]"
-            style={{ top: `${nowPct}%` }}
-            title="此刻"
-          />
-        )}
-
-        <div className="absolute inset-0">
-          {layout.b.map((x) => (
-            <Block
-              key={x.id}
-              topPct={x.top}
-              heightPct={x.h}
-              className="border-rose-500/50 bg-rose-950/80 text-rose-100"
-              label={x.label}
-              sub={[x.trace, "不可用"].filter(Boolean).join(" · ")}
+      {/* 右侧：色块区与操作区分列，避免计划条铺满整行时盖住「完成」按钮（WebView 命中顺序不稳定） */}
+      <div className="relative flex min-h-0 min-w-0 flex-1">
+        <div className="relative min-h-0 min-w-0 flex-1">
+          {HOURS.map((h) => (
+            <div
+              key={`grid-${h}`}
+              className="pointer-events-none absolute left-0 right-0 border-t border-[var(--aura-border)]"
+              style={{ top: `${(h / 24) * 100}%` }}
             />
           ))}
-          {layout.p.map((x) => (
-            <div key={x.id} className="pointer-events-none absolute inset-0">
-              <div className="pointer-events-auto">
-                <Block
-                  topPct={x.top}
-                  heightPct={x.h}
-                  className={clsx(
-                    "border-emerald-500/40",
-                    x.status === "done"
-                      ? "bg-zinc-800/90 line-through opacity-60"
-                      : "bg-emerald-950/85 text-emerald-50",
-                  )}
-                  label={x.title}
-                  sub={[x.trace, x.status].filter(Boolean).join(" · ")}
-                />
-              </div>
-            </div>
-          ))}
-          {/* 单独一层按钮，避免多段「全屏叠层」挡住上层任务的点击 */}
+
+          {nowPct != null && (
+            <div
+              className="pointer-events-none absolute left-0 right-0 z-10 border-t-2 border-[var(--aura-accent)]"
+              style={{ top: `${nowPct}%` }}
+              title="此刻"
+            />
+          )}
+
+          <div className="absolute inset-0">
+            {layout.b.map((x) => (
+              <Block
+                key={x.id}
+                topPct={x.top}
+                heightPct={x.h}
+                className="border-rose-500/50 bg-rose-950/80 text-rose-100"
+                label={x.label}
+                sub={[x.trace, "不可用"].filter(Boolean).join(" · ")}
+              />
+            ))}
+            {layout.p.map((x) => (
+              <Block
+                key={x.id}
+                topPct={x.top}
+                heightPct={x.h}
+                className={clsx(
+                  "border-emerald-500/40",
+                  x.status === "done"
+                    ? "bg-zinc-800/90 line-through opacity-60"
+                    : "bg-emerald-950/85 text-emerald-50",
+                )}
+                label={x.title}
+                sub={[x.trace, x.status].filter(Boolean).join(" · ")}
+              />
+            ))}
+          </div>
+        </div>
+
+        <div
+          className="relative w-[5.25rem] shrink-0 border-l border-[var(--aura-border)] bg-[var(--aura-bg-elevated)]/30"
+          aria-hidden={layout.p.every((x) => x.status !== "pending")}
+        >
           {layout.p
             .filter((x) => x.status === "pending")
             .map((x) => (
               <div
                 key={`act-${x.id}`}
-                className="absolute right-1 z-[60] flex flex-col gap-0.5"
+                className="absolute left-0.5 right-0.5 z-10 flex flex-col gap-0.5"
                 style={{ top: `calc(${x.top}% + 2px)` }}
               >
                 <button
                   type="button"
-                  className="rounded bg-emerald-600 px-2 py-0.5 text-[10px] font-medium text-white shadow-sm hover:bg-emerald-500"
-                  onClick={() => onComplete(x.id)}
+                  className="rounded bg-emerald-600 px-1.5 py-0.5 text-[10px] font-medium leading-tight text-white shadow-sm hover:bg-emerald-500 active:scale-[0.98]"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    onComplete(x.id);
+                  }}
                 >
                   完成
                 </button>
                 <button
                   type="button"
-                  className="rounded border border-zinc-600 bg-zinc-900/95 px-2 py-0.5 text-[10px] text-zinc-300 hover:bg-zinc-800"
-                  onClick={() => onSkip(x.id)}
+                  className="rounded border border-zinc-600 bg-zinc-900/95 px-1.5 py-0.5 text-[10px] leading-tight text-zinc-300 hover:bg-zinc-800 active:scale-[0.98]"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    onSkip(x.id);
+                  }}
                 >
                   跳过
                 </button>

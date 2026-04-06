@@ -1,4 +1,4 @@
-import { invoke } from "@tauri-apps/api/core";
+import { invoke, isTauri } from "@tauri-apps/api/core";
 import { clsx } from "clsx";
 import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
 import { DayTimeline, type BusyDto, type PlanDto } from "../components/DayTimeline";
@@ -147,6 +147,10 @@ export function CalendarPage() {
 
   const onComplete = useCallback(
     (taskId: string) => {
+      if (!isTauri()) {
+        setActionError("请在桌面版应用内标记完成；浏览器预览无法调用本地引擎。");
+        return;
+      }
       setActionError(null);
       setActionBusy(true);
       void invoke("complete_plan_item", { taskId })
@@ -162,6 +166,10 @@ export function CalendarPage() {
 
   const onSkip = useCallback(
     (taskId: string) => {
+      if (!isTauri()) {
+        setActionError("请在桌面版应用内操作；浏览器预览无法调用本地引擎。");
+        return;
+      }
       setActionError(null);
       setActionBusy(true);
       void invoke("skip_plan_item", { taskId })
