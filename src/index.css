@@ -1,0 +1,140 @@
+@import "tailwindcss";
+@plugin "@tailwindcss/typography";
+
+/*
+  Aura / Goshu 向：极轻量设计令牌（无外链字体，系统栈即渲染）
+  —— 参考本地 Goshu：月夜色、障子边、苔绿点缀、呼吸曲线
+*/
+@layer base {
+  :root {
+    --aura-bg: #0a0a0b;
+    --aura-bg-elevated: rgba(16, 16, 18, 0.85);
+    --aura-border: rgba(255, 250, 235, 0.07);
+    --aura-border-strong: rgba(255, 250, 235, 0.12);
+    --aura-text: #e9e7e4;
+    --aura-muted: #8c8880;
+    --aura-accent: #6d9b76;
+    --aura-accent-dim: rgba(109, 155, 118, 0.14);
+    --aura-warm: #c9a86c;
+    --aura-danger: #c97b7b;
+    --aura-ease: cubic-bezier(0.22, 1, 0.36, 1);
+    --aura-ring: rgba(109, 155, 118, 0.45);
+  }
+
+  html {
+    color-scheme: dark;
+  }
+
+  body {
+    @apply antialiased min-h-screen;
+    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
+      "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+    background-color: var(--aura-bg);
+    color: var(--aura-text);
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  ::selection {
+    background: var(--aura-accent-dim);
+    color: var(--aura-text);
+  }
+}
+
+@layer components {
+  .aura-panel {
+    background: var(--aura-bg-elevated);
+    border: 1px solid var(--aura-border);
+    box-shadow: 0 1px 0 var(--aura-border-strong) inset;
+  }
+
+  .aura-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 0.5rem;
+    padding: 0.375rem 0.75rem;
+    font-size: 0.875rem;
+    font-weight: 500;
+    transition-property: color, background-color, box-shadow, transform;
+    transition-duration: 0.2s;
+    transition-timing-function: var(--aura-ease);
+  }
+
+  .aura-btn-primary {
+    background: color-mix(in oklab, var(--aura-accent) 88%, black);
+    color: #0a0a0b;
+  }
+
+  .aura-btn-primary:hover:not(:disabled) {
+    filter: brightness(1.06);
+  }
+
+  .aura-btn-primary:active:not(:disabled) {
+    transform: translateY(0.5px);
+  }
+
+  .aura-btn-ghost {
+    @apply border text-[var(--aura-text)] border-[var(--aura-border)];
+    background: transparent;
+  }
+
+  .aura-btn-ghost:hover:not(:disabled) {
+    background: rgba(255, 255, 255, 0.04);
+    border-color: var(--aura-border-strong);
+  }
+
+  .aura-input {
+    @apply rounded-lg border bg-black/25 px-3 py-2 text-sm outline-none transition-[border-color,box-shadow];
+    border-color: var(--aura-border);
+    color: var(--aura-text);
+    transition-duration: 0.15s;
+    transition-timing-function: var(--aura-ease);
+  }
+
+  .aura-input:focus {
+    border-color: color-mix(in oklab, var(--aura-accent) 55%, var(--aura-border));
+    box-shadow: 0 0 0 1px var(--aura-ring);
+  }
+
+  .aura-nav-pill {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 9999px;
+    padding: 0.375rem 0.875rem;
+    font-size: 0.875rem;
+    font-weight: 500;
+    transition-property: color, background-color, box-shadow, transform;
+    transition-duration: 0.2s;
+    transition-timing-function: var(--aura-ease);
+  }
+
+  .aura-nav-pill[data-active="true"] {
+    background: var(--aura-accent-dim);
+    color: var(--aura-text);
+    border: 1px solid color-mix(in oklab, var(--aura-accent) 35%, transparent);
+  }
+
+  .aura-nav-pill[data-active="false"] {
+    @apply text-[var(--aura-muted)] border border-transparent;
+  }
+
+  .aura-nav-pill[data-active="false"]:hover {
+    color: var(--aura-text);
+    background: rgba(255, 255, 255, 0.04);
+  }
+}
+
+/* 性能：长列表块级内容可见性 */
+.cv-auto {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 120px;
+}
+
+/* 对话气泡：不用 typography 插件的大套 prose，减轻重排与样式成本 */
+.chat-bubble-assistant {
+  line-height: 1.55;
+  letter-spacing: 0.01em;
+  font-size: 0.875rem;
+}
