@@ -2,7 +2,7 @@
 
 use crate::db::Db;
 use crate::llm::{
-    llm_complete, load_llm_settings_or_err, resolve_llm_settings_for_command, ChatMessage,
+    llm_complete, load_llm_settings_inner, resolve_llm_settings_for_command, ChatMessage,
     LlmSettings,
 };
 use crate::metrics::recompute_daily_rollup;
@@ -285,7 +285,7 @@ pub struct CompleteResult {
 #[tauri::command]
 #[allow(non_snake_case)]
 pub async fn complete_plan_item(app: AppHandle, db: tauri::State<'_, Db>, taskId: String) -> Result<CompleteResult, String> {
-    let settings = load_llm_settings_or_err(&app)?;
+    // 先落库：完成状态不应依赖 LLM 是否可用（否则前端无反馈、数据也不变）
     let now = Local::now();
     let now_s = now.to_rfc3339();
 
@@ -334,16 +334,21 @@ pub async fn complete_plan_item(app: AppHandle, db: tauri::State<'_, Db>, taskId
         daily_summary_triggered = true;
     }
 
-    let fb = feedback_prompt(&title, &end_at_s, &now_s);
-    let short = llm_complete(
-        &settings,
-        vec![ChatMessage {
-            role: "user".into(),
-            content: fb,
-        }],
-    )
-    .await
-    .unwrap_or_else(|_| "做得好，保持节奏。".into());
+    let short = match load_llm_settings_inner(&app) {
+        Ok(Some(settings)) => {
+            let fb = feedback_prompt(&title, &end_at_s, &now_s);
+            llm_complete(
+                &settings,
+                vec![ChatMessage {
+                    role: "user".into(),
+                    content: fb,
+                }],
+            )
+            .await
+            .unwrap_or_else(|_| "做得好，保持节奏。".into())
+        }
+        Ok(None) | Err(_) => "已标记完成。连接 API 后可显示一句鼓励。".into(),
+    };
 
     let _ = app.emit(
         "engine/feedback",

@@ -206,29 +206,33 @@ export const DayTimeline = memo(function DayTimeline({
                   sub={[x.trace, x.status].filter(Boolean).join(" · ")}
                 />
               </div>
-              {x.status === "pending" && (
-                <div
-                  className="pointer-events-auto absolute right-1 z-20 flex flex-col gap-0.5"
-                  style={{ top: `calc(${x.top}% + 2px)` }}
-                >
-                  <button
-                    type="button"
-                    className="rounded bg-emerald-600 px-2 py-0.5 text-[10px] font-medium text-white hover:bg-emerald-500"
-                    onClick={() => onComplete(x.id)}
-                  >
-                    完成
-                  </button>
-                  <button
-                    type="button"
-                    className="rounded border border-zinc-600 bg-zinc-900/90 px-2 py-0.5 text-[10px] text-zinc-300 hover:bg-zinc-800"
-                    onClick={() => onSkip(x.id)}
-                  >
-                    跳过
-                  </button>
-                </div>
-              )}
             </div>
           ))}
+          {/* 单独一层按钮，避免多段「全屏叠层」挡住上层任务的点击 */}
+          {layout.p
+            .filter((x) => x.status === "pending")
+            .map((x) => (
+              <div
+                key={`act-${x.id}`}
+                className="absolute right-1 z-[60] flex flex-col gap-0.5"
+                style={{ top: `calc(${x.top}% + 2px)` }}
+              >
+                <button
+                  type="button"
+                  className="rounded bg-emerald-600 px-2 py-0.5 text-[10px] font-medium text-white shadow-sm hover:bg-emerald-500"
+                  onClick={() => onComplete(x.id)}
+                >
+                  完成
+                </button>
+                <button
+                  type="button"
+                  className="rounded border border-zinc-600 bg-zinc-900/95 px-2 py-0.5 text-[10px] text-zinc-300 hover:bg-zinc-800"
+                  onClick={() => onSkip(x.id)}
+                >
+                  跳过
+                </button>
+              </div>
+            ))}
         </div>
       </div>
     </div>

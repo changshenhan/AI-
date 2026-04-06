@@ -119,9 +119,12 @@ export function CalendarPage() {
   const selectedDay = useUiStore((s) => s.selectedDay);
   const setSelectedDay = useUiStore((s) => s.setSelectedDay);
   const calendarRevision = useUiStore((s) => s.calendarRevision);
+  const bumpCalendar = useUiStore((s) => s.bumpCalendar);
   const [busy, setBusy] = useState<BusyDto[]>([]);
   const [plans, setPlans] = useState<PlanDto[]>([]);
   const [pending, startTransition] = useTransition();
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [actionBusy, setActionBusy] = useState(false);
 
   const load = useCallback(() => {
     startTransition(async () => {
@@ -144,30 +147,32 @@ export function CalendarPage() {
 
   const onComplete = useCallback(
     (taskId: string) => {
-      startTransition(async () => {
-        try {
-          await invoke("complete_plan_item", { taskId });
+      setActionError(null);
+      setActionBusy(true);
+      void invoke("complete_plan_item", { taskId })
+        .then(() => {
+          bumpCalendar();
           load();
-        } catch {
-          /* toast elsewhere */
-        }
-      });
+        })
+        .catch((e) => setActionError(String(e)))
+        .finally(() => setActionBusy(false));
     },
-    [load],
+    [load, bumpCalendar],
   );
 
   const onSkip = useCallback(
     (taskId: string) => {
-      startTransition(async () => {
-        try {
-          await invoke("skip_plan_item", { taskId });
+      setActionError(null);
+      setActionBusy(true);
+      void invoke("skip_plan_item", { taskId })
+        .then(() => {
+          bumpCalendar();
           load();
-        } catch {
-          /* toast elsewhere */
-        }
-      });
+        })
+        .catch((e) => setActionError(String(e)))
+        .finally(() => setActionBusy(false));
     },
-    [load],
+    [load, bumpCalendar],
   );
 
   return (
@@ -184,13 +189,21 @@ export function CalendarPage() {
             onChange={(e) => setSelectedDay(e.target.value)}
           />
         </label>
-        {pending && (
-          <span className="text-xs text-zinc-500">刷新中…</span>
+        {(pending || actionBusy) && (
+          <span className="text-xs text-zinc-500">处理中…</span>
         )}
       </div>
       <p className="prose prose-invert prose-sm max-w-none text-zinc-400">
         红色为不可用块，绿色为计划；已跳过的任务不在此显示。可上下滚动查看全天。
       </p>
+      {actionError && (
+        <div
+          role="alert"
+          className="rounded-lg border border-rose-500/40 bg-rose-950/50 px-3 py-2 text-sm text-rose-100"
+        >
+          {actionError}
+        </div>
+      )}
       <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden pr-1">
         <DayTimeline
           viewDay={selectedDay}

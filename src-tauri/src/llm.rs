@@ -319,7 +319,7 @@ fn settings_from_ui_usable(s: &LlmSettings) -> bool {
     !s.api_key.trim().is_empty()
 }
 
-fn load_llm_settings_inner(app: &AppHandle) -> Result<Option<LlmSettings>, String> {
+pub(crate) fn load_llm_settings_inner(app: &AppHandle) -> Result<Option<LlmSettings>, String> {
     if let Some(j) = secure_settings::load_json()? {
         let s: LlmSettings = serde_json::from_str(&j).map_err(|e| e.to_string())?;
         return Ok(Some(s));
