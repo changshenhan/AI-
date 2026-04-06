@@ -2,6 +2,8 @@
 
 本地 SQLite + 多厂商 LLM 的桌面日程应用（Tauri 2 + React）。API 密钥走系统钥匙串，请求由 Rust 直连。
 
+**仓库地址**：<https://github.com/changshenhan/AI->
+
 ---
 
 ## 新手：从 GitHub「一键」安装（推荐）
@@ -10,9 +12,9 @@
 
 ### 1. 打开本项目的发行版页面
 
-在浏览器地址栏访问（把用户名换成你的仓库位置即可）：
+在浏览器访问：
 
-`https://github.com/changshenhan/ai-schedule-engine/releases`
+**<https://github.com/changshenhan/AI-/releases>**
 
 ### 2. 下载安装包
 
@@ -24,26 +26,11 @@
 
 **系统设置 → 隐私与安全性** 里选择 **仍要打开**，或在应用图标上 **右键 → 打开**。
 
+> 若 Releases 里还没有文件，需要维护者在本地打标签并推送 `v*`（见下文），等 GitHub Actions 构建完成后即可下载。
+
 ---
 
-## 仓库与维护者
-
-- 建议仓库名：`changshenhan/ai-schedule-engine`
-
-### 首次把本项目推到你的 GitHub（维护者操作）
-
-1. 在 GitHub 网页新建仓库：**New repository** → 名称填 `ai-schedule-engine` → **不要**勾选添加 README（本地已有）→ Create。
-2. 在本项目目录执行（HTTPS 示例，也可换成 SSH）：
-
-```bash
-cd /Users/songlvhan/Desktop/AI-003
-git remote add origin https://github.com/changshenhan/ai-schedule-engine.git
-git push -u origin main
-```
-
-若 GitHub 提示登录，按浏览器或 Personal Access Token 提示完成授权。
-
-### 发布新版本安装包（自动生成 Releases）
+## 维护者：发布新版本安装包
 
 推送以 `v` 开头的标签后，Actions 会在云端构建 **macOS `.dmg`** 并挂到 Releases：
 
