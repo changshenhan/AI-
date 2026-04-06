@@ -6,6 +6,15 @@ import { useUiStore } from "../store/uiStore";
 
 type DayOv = { day: string; planCount: number; busyCount: number };
 
+/** 与后端 `CompleteResult`（camelCase）一致 */
+type CompletePlanResult = {
+  completedAt: string;
+  wasOnTime: boolean;
+  dailySummaryTriggered: boolean;
+  taskTitle: string;
+  feedbackText: string;
+};
+
 function MonthStrip({
   selectedDay,
   setSelectedDay,
@@ -125,6 +134,12 @@ export function CalendarPage() {
   const [pending, startTransition] = useTransition();
   const [actionError, setActionError] = useState<string | null>(null);
   const [actionBusy, setActionBusy] = useState(false);
+  /** 引擎返回的鼓励（不依赖事件通道，日历页内必显） */
+  const [encouragement, setEncouragement] = useState<{
+    taskTitle: string;
+    text: string;
+    wasOnTime: boolean;
+  } | null>(null);
 
   const load = useCallback(() => {
     startTransition(async () => {
@@ -152,9 +167,15 @@ export function CalendarPage() {
         return;
       }
       setActionError(null);
+      setEncouragement(null);
       setActionBusy(true);
-      void invoke("complete_plan_item", { taskId })
-        .then(() => {
+      void invoke<CompletePlanResult>("complete_plan_item", { taskId })
+        .then((r) => {
+          setEncouragement({
+            taskTitle: r.taskTitle,
+            text: r.feedbackText,
+            wasOnTime: r.wasOnTime,
+          });
           bumpCalendar();
           load();
         })
@@ -204,6 +225,40 @@ export function CalendarPage() {
       <p className="prose prose-invert prose-sm max-w-none text-zinc-400">
         红色为不可用块，绿色为计划；已跳过的任务不在此显示。可上下滚动查看全天。
       </p>
+      {encouragement && (
+        <div
+          className="rounded-xl border border-sky-500/35 bg-sky-950/35 px-4 py-3 text-sm shadow-sm"
+          role="status"
+        >
+          <div className="mb-1.5 flex items-center justify-between gap-2">
+            <span className="text-[11px] font-semibold uppercase tracking-wide text-sky-200/90">
+              完成鼓励
+              <span
+                className={clsx(
+                  "ml-2 font-normal normal-case",
+                  encouragement.wasOnTime ? "text-emerald-300/90" : "text-amber-300/90",
+                )}
+              >
+                {encouragement.wasOnTime ? "· 在计划截止前完成" : "· 截止后完成"}
+              </span>
+            </span>
+            <button
+              type="button"
+              className="rounded px-1.5 text-xs text-zinc-400 hover:bg-white/5 hover:text-zinc-200"
+              onClick={() => setEncouragement(null)}
+            >
+              关闭
+            </button>
+          </div>
+          <p className="leading-relaxed text-zinc-100">
+            <span className="font-medium text-sky-100/95">
+              {encouragement.taskTitle}
+            </span>
+            <span className="text-zinc-400"> · </span>
+            {encouragement.text}
+          </p>
+        </div>
+      )}
       {actionError && (
         <div
           role="alert"

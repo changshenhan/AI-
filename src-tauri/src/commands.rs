@@ -12,7 +12,7 @@ use crate::tools::run_tool;
 use chrono::{Local, NaiveDate};
 use rusqlite::params;
 use serde::Serialize;
-use serde_json::{json, Value};
+use serde_json::Value;
 use std::collections::HashMap;
 use std::fs;
 use tauri::{AppHandle, Emitter, Manager};
@@ -280,6 +280,16 @@ pub struct CompleteResult {
     pub completed_at: String,
     pub was_on_time: bool,
     pub daily_summary_triggered: bool,
+    /// 与鼓励文案一致，供前端无需依赖事件即可展示
+    pub task_title: String,
+    pub feedback_text: String,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FeedbackEventPayload {
+    pub task_title: String,
+    pub text: String,
 }
 
 #[tauri::command]
@@ -289,27 +299,39 @@ pub async fn complete_plan_item(app: AppHandle, db: tauri::State<'_, Db>, taskId
     let now = Local::now();
     let now_s = now.to_rfc3339();
 
-    let (day, title, end_at_s, was_on_time) = {
+    let (day, title, start_at_s, end_at_s, was_on_time, early_min, late_min) = {
         let conn = db.0.lock().map_err(|e| e.to_string())?;
-        let row: (String, String, String) = conn.query_row(
-            "SELECT day, title, end_at FROM plan_items WHERE id = ?1",
+        let row: (String, String, String, String) = conn.query_row(
+            "SELECT day, title, start_at, end_at FROM plan_items WHERE id = ?1",
             params![taskId],
-            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
-        ).map_err(|e| e.to_string())?;
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)),
+        )
+        .map_err(|e| e.to_string())?;
         conn.execute(
             "UPDATE plan_items SET status = 'done' WHERE id = ?1",
             params![taskId],
         )
         .map_err(|e| e.to_string())?;
-        let end_at = chrono::DateTime::parse_from_rfc3339(&row.2).map_err(|e| e.to_string())?;
-        let was_on_time = now <= end_at.with_timezone(&Local);
+        let end_at = chrono::DateTime::parse_from_rfc3339(&row.3).map_err(|e| e.to_string())?;
+        let end_local = end_at.with_timezone(&Local);
+        let was_on_time = now <= end_local;
+        let early_min: Option<i64> = if now < end_local {
+            Some(end_local.signed_duration_since(now).num_minutes().max(0))
+        } else {
+            None
+        };
+        let late_min: Option<i64> = if now > end_local {
+            Some(now.signed_duration_since(end_local).num_minutes().max(0))
+        } else {
+            None
+        };
         conn.execute(
             "INSERT INTO completions (task_id, completed_at, was_on_time) VALUES (?1, ?2, ?3)
              ON CONFLICT(task_id) DO UPDATE SET completed_at = excluded.completed_at, was_on_time = excluded.was_on_time",
             params![taskId, now_s.clone(), if was_on_time { 1 } else { 0 }],
         )
         .map_err(|e| e.to_string())?;
-        (row.0, row.1, row.2, was_on_time)
+        (row.0, row.1, row.2, row.3, was_on_time, early_min, late_min)
     };
 
     {
@@ -336,7 +358,15 @@ pub async fn complete_plan_item(app: AppHandle, db: tauri::State<'_, Db>, taskId
 
     let short = match load_llm_settings_inner(&app) {
         Ok(Some(settings)) => {
-            let fb = feedback_prompt(&title, &end_at_s, &now_s);
+            let fb = feedback_prompt(
+                &title,
+                &start_at_s,
+                &end_at_s,
+                &now_s,
+                was_on_time,
+                early_min,
+                late_min,
+            );
             llm_complete(
                 &settings,
                 vec![ChatMessage {
@@ -345,28 +375,83 @@ pub async fn complete_plan_item(app: AppHandle, db: tauri::State<'_, Db>, taskId
                 }],
             )
             .await
-            .unwrap_or_else(|_| "做得好，保持节奏。".into())
+            .unwrap_or_else(|_| {
+                feedback_fallback_local(&title, was_on_time, early_min, late_min)
+            })
         }
-        Ok(None) | Err(_) => "已标记完成。连接 API 后可显示一句鼓励。".into(),
+        Ok(None) | Err(_) => feedback_fallback_local(&title, was_on_time, early_min, late_min),
     };
 
     let _ = app.emit(
         "engine/feedback",
-        json!({ "taskTitle": title, "text": short }),
+        FeedbackEventPayload {
+            task_title: title.clone(),
+            text: short.clone(),
+        },
     );
 
     Ok(CompleteResult {
         completed_at: now_s,
         was_on_time,
         daily_summary_triggered,
+        task_title: title,
+        feedback_text: short,
     })
 }
 
-fn feedback_prompt(title: &str, end_at: &str, completed_at: &str) -> String {
+/// 无模型或请求失败时的本地鼓励（与计划截止的相对关系 + 任务名）
+fn feedback_fallback_local(
+    title: &str,
+    was_on_time: bool,
+    early_min: Option<i64>,
+    late_min: Option<i64>,
+) -> String {
+    if let Some(m) = early_min {
+        if m > 0 {
+            return format!(
+                "「{}」比计划截止早约 {} 分钟完成，节奏很好。",
+                title, m
+            );
+        }
+    }
+    if let Some(m) = late_min {
+        if m > 0 {
+            return format!(
+                "「{}」比计划截止晚约 {} 分钟完成；仍算落地，下次可再掐紧一点。",
+                title, m
+            );
+        }
+    }
+    if was_on_time {
+        format!("「{}」在计划截止时间前（或当时）完成，不错。", title)
+    } else {
+        format!("「{}」已标记完成，继续推进下一件事吧。", title)
+    }
+}
+
+fn feedback_prompt(
+    title: &str,
+    start_at: &str,
+    end_at: &str,
+    completed_at: &str,
+    was_on_time: bool,
+    early_min: Option<i64>,
+    late_min: Option<i64>,
+) -> String {
+    let timing = match (early_min, late_min, was_on_time) {
+        (Some(e), _, _) if e > 0 => format!("比计划截止早约 {} 分钟（提前完成）", e),
+        (_, Some(l), _) if l > 0 => format!("比计划截止晚约 {} 分钟（超时完成）", l),
+        _ if was_on_time => "在截止时间前或当时完成（按时）".to_string(),
+        _ => "时间关系见上（按本地时钟比较计划截止时刻与实际点选完成时刻）".to_string(),
+    };
     format!(
-        "用户刚完成计划项「{}」。计划结束时间 {}，实际完成时间 {}。\
-         请用一句中文简短鼓励（不超过30字），不要引号。",
-        title, end_at, completed_at
+        "你是温和的日程教练。用户刚在应用里点「完成」一项计划。\n\
+         - 任务标题：{}\n\
+         - 计划时段（本地）：{} ～ {}\n\
+         - 用户点「完成」的时刻（本地）：{}\n\
+         - 与计划截止的关系：{}\n\n\
+         请只输出**一句**中文鼓励（不超过 45 字），自然口语；必须体现「是否赶在截止前」和任务内容，不要引号或 Markdown。",
+        title, start_at, end_at, completed_at, timing
     )
 }
 

@@ -49,16 +49,10 @@ export default function App() {
     [pushToast],
   );
 
-  const onFeedback = useCallback(
-    (p: { taskTitle: string; text: string }) => {
-      pushToast({
-        title: `完成 · ${p.taskTitle}`,
-        body: p.text,
-        variant: "feedback",
-      });
-    },
-    [pushToast],
-  );
+  const onFeedback = useCallback((_p: { taskTitle: string; text: string }) => {
+    // 完成鼓励由 `complete_plan_item` 的返回值在日历页内联展示（含时效与任务名）；
+    // 若再弹右下角会与日历卡片重复，故此处不叠 Toast。
+  }, []);
 
   useEngineEvents(onSummary, onFeedback);
 
