@@ -1,6 +1,7 @@
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { clsx } from "clsx";
 import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
+import { createPortal } from "react-dom";
 import { DayTimeline, type BusyDto, type PlanDto } from "../components/DayTimeline";
 import { useUiStore } from "../store/uiStore";
 
@@ -225,40 +226,69 @@ export function CalendarPage() {
       <p className="prose prose-invert prose-sm max-w-none text-zinc-400">
         红色为不可用块，绿色为计划；已跳过的任务不在此显示。可上下滚动查看全天。
       </p>
-      {encouragement && (
-        <div
-          className="rounded-xl border border-sky-500/35 bg-sky-950/35 px-4 py-3 text-sm shadow-sm"
-          role="status"
-        >
-          <div className="mb-1.5 flex items-center justify-between gap-2">
-            <span className="text-[11px] font-semibold uppercase tracking-wide text-sky-200/90">
-              完成鼓励
-              <span
-                className={clsx(
-                  "ml-2 font-normal normal-case",
-                  encouragement.wasOnTime ? "text-emerald-300/90" : "text-amber-300/90",
-                )}
-              >
-                {encouragement.wasOnTime ? "· 在计划截止前完成" : "· 截止后完成"}
-              </span>
-            </span>
+      {encouragement &&
+        createPortal(
+          <div
+            className="fixed inset-0 z-[300] flex items-center justify-center p-4"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="encouragement-title"
+          >
             <button
               type="button"
-              className="rounded px-1.5 text-xs text-zinc-400 hover:bg-white/5 hover:text-zinc-200"
+              className="absolute inset-0 bg-black/55 backdrop-blur-[2px]"
+              aria-label="关闭鼓励"
               onClick={() => setEncouragement(null)}
-            >
-              关闭
-            </button>
-          </div>
-          <p className="leading-relaxed text-zinc-100">
-            <span className="font-medium text-sky-100/95">
-              {encouragement.taskTitle}
-            </span>
-            <span className="text-zinc-400"> · </span>
-            {encouragement.text}
-          </p>
-        </div>
-      )}
+            />
+            <div className="relative z-10 w-full max-w-md rounded-2xl border border-sky-500/40 bg-[var(--aura-bg-elevated)] p-5 shadow-2xl ring-1 ring-white/10">
+              <div className="mb-3 flex items-start justify-between gap-3">
+                <div>
+                  <h2
+                    id="encouragement-title"
+                    className="text-sm font-semibold tracking-tight text-sky-100"
+                  >
+                    引擎 · 完成鼓励
+                  </h2>
+                  <p
+                    className={clsx(
+                      "mt-1 text-xs",
+                      encouragement.wasOnTime
+                        ? "text-emerald-400/95"
+                        : "text-amber-400/95",
+                    )}
+                  >
+                    {encouragement.wasOnTime
+                      ? "在计划截止时间前完成"
+                      : "在计划截止时间之后完成"}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  className="rounded-lg px-2 py-1 text-xs text-zinc-400 hover:bg-white/10 hover:text-zinc-100"
+                  onClick={() => setEncouragement(null)}
+                >
+                  关闭
+                </button>
+              </div>
+              <p className="text-[15px] leading-relaxed text-zinc-100">
+                <span className="font-medium text-sky-100/95">
+                  {encouragement.taskTitle}
+                </span>
+              </p>
+              <p className="mt-3 text-sm leading-relaxed text-zinc-300">
+                {encouragement.text}
+              </p>
+              <button
+                type="button"
+                className="aura-btn aura-btn-primary mt-5 w-full py-2 text-sm"
+                onClick={() => setEncouragement(null)}
+              >
+                知道了
+              </button>
+            </div>
+          </div>,
+          document.body,
+        )}
       {actionError && (
         <div
           role="alert"
